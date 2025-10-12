@@ -5,18 +5,17 @@ from urllib.parse import urlparse
 def get_db_connection():
     db_url = os.getenv("DATABASE_URL")
 
-    if db_url:
-        # Parse the Railway MySQL connection URL
-        url = urlparse(db_url)
+    if db_url and db_url.startswith("mysql://"):
+        parsed = urlparse(db_url)
         return mysql.connector.connect(
-            host=url.hostname,
-            user=url.username,
-            password=url.password,
-            database=url.path[1:],  # remove leading '/'
-            port=url.port
+            host=parsed.hostname,
+            port=parsed.port,
+            user=parsed.username,
+            password=parsed.password,
+            database=parsed.path.lstrip('/')
         )
     else:
-        # Local fallback for development
+        # fallback for local development
         return mysql.connector.connect(
             host="localhost",
             user="root",
