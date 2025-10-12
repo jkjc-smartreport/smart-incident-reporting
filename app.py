@@ -1,66 +1,101 @@
-from flask import Flask, render_template, request, redirect, session, url_for, flash, jsonify, request
-from config import get_db_connection # type: ignore
-from collections import defaultdict
-from datetime import datetime
-import mysql.connector
-import os
+from flask import Flask, render_template, request, redirect, session, url_for, flash, jsonify
+from flask_sqlalchemy import SQLAlchemy
 from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
+from datetime import datetime
+from collections import defaultdict
+import os
 import re
 
 app = Flask(__name__)
-app.secret_key = "replace_this_with_a_random_secret_key"  # needed for sessions
+app.secret_key = "replace_this_with_a_random_secret_key"
 
 # 🔒 Security configurations
-app.config['SESSION_COOKIE_HTTPONLY'] = True  # Prevents JavaScript access to session cookies
-app.config['SESSION_COOKIE_SECURE'] = True    # Only send cookies over HTTPS (enable only in production)
-app.config['SESSION_COOKIE_SAMESITE'] = 'Lax' # Helps prevent CSRF attacks
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SECURE'] = True  # enable in production
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 
-# Where uploaded images and videos will be saved
+# Upload folder config
 UPLOAD_FOLDER = os.path.join("static", "uploads")
 ALLOWED_IMAGE_EXTENSIONS = {"png", "jpg", "jpeg", "gif"}
 ALLOWED_VIDEO_EXTENSIONS = {"mp4", "avi", "mov", "mkv"}
-
-# Ensure the upload folder exists
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 
-# Helper function to check valid file extensions
+# ---------------------------
+# DATABASE CONFIGURATION
+# ---------------------------
+app.config['SQLALCHEMY_DATABASE_URI'] = (
+    f"mysql+mysqlconnector://{os.environ.get('DB_USER')}:{os.environ.get('DB_PASS')}"
+    f"@{os.environ.get('DB_HOST')}:{os.environ.get('DB_PORT')}/{os.environ.get('DB_NAME')}"
+)
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+db = SQLAlchemy(app)
+
+# ---------------------------
+# DATABASE MODELS
+# ---------------------------
+class User(db.Model):
+    __tablename__ = 'users'
+    user_id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False)
+    email = db.Column(db.String(100), unique=True, nullable=False)
+    password = db.Column(db.String(255), nullable=False)
+    contact_no = db.Column(db.String(20), nullable=False)
+    role = db.Column(db.String(20), default="Public", nullable=False)
+
+class Incident(db.Model):
+    __tablename__ = 'incidents'
+    incident_id = db.Column(db.Integer, primary_key=True)
+    reported_by_user_id = db.Column(db.Integer, db.ForeignKey('users.user_id'))
+    incident_type = db.Column(db.String(50), nullable=False)
+    description = db.Column(db.Text, nullable=False)
+    location = db.Column(db.String(255), nullable=False)
+    gps_lat = db.Column(db.Float)
+    gps_long = db.Column(db.Float)
+    status = db.Column(db.String(50), default="Pending")
+    date_reported = db.Column(db.DateTime, default=datetime.utcnow)
+    agencies_notified = db.Column(db.String(255))
+    image_path = db.Column(db.String(255))
+    video_path = db.Column(db.String(255))
+
+# Create tables if not exist
+with app.app_context():
+    db.create_all()
+
+# ---------------------------
+# HELPER FUNCTIONS
+# ---------------------------
 def allowed_file(filename, allowed_set):
     return "." in filename and filename.rsplit(".", 1)[1].lower() in allowed_set
 
+# ---------------------------
+# ROUTES
+# ---------------------------
 @app.route("/")
 def index():
     if "user_id" in session:
         return redirect(url_for("dashboard"))
     return redirect(url_for("login"))
 
+# ---------------------------
+# LOGIN
+# ---------------------------
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
         email = request.form["email"].strip().lower()
         password = request.form["password"]
 
-        conn = get_db_connection()
-        cur = conn.cursor(dictionary=True)
-        cur.execute("SELECT * FROM users WHERE email=%s", (email,))
-        user = cur.fetchone()
-        cur.close()
-        conn.close()
-
-        # ✅ Check if user exists and password matches
-        if user and check_password_hash(user["password"], password):
-            session["user_id"] = user["user_id"]
-            session["name"] = user["name"]
-            session["role"] = user["role"]
+        user = User.query.filter_by(email=email).first()
+        if user and check_password_hash(user.password, password):
+            session["user_id"] = user.user_id
+            session["name"] = user.name
+            session["role"] = user.role
             return redirect(url_for("dashboard"))
         else:
-            # ❌ Instead of showing a new page, flash an error message
             flash("⚠️ Invalid email or password. Please try again.", "error")
             return render_template("login.html")
-
-    # GET: Just show the login form
     return render_template("login.html")
 
 @app.route("/agency-login", methods=["GET", "POST"])
@@ -69,28 +104,19 @@ def agency_login():
         email = request.form["email"].strip().lower()
         password = request.form["password"]
 
-        conn = get_db_connection()
-        cur = conn.cursor(dictionary=True)
-        # 👇 Fetch only by email, not password
-        cur.execute("SELECT * FROM users WHERE email=%s", (email,))
-        user = cur.fetchone()
-        cur.close()
-        conn.close()
-
-        # 👇 Verify user role and hashed password
-        if user and user["role"] in ("BFP", "PNP", "CDRRMO"):
-            if check_password_hash(user["password"], password):
-                session["user_id"] = user["user_id"]
-                session["name"] = user["name"]
-                session["role"] = user["role"]
-                return redirect(url_for("dashboard"))
-            else:
-                flash("⚠️ Incorrect password. Please try again.", "error")
+        user = User.query.filter_by(email=email).first()
+        if user and user.role in ("BFP", "PNP", "CDRRMO") and check_password_hash(user.password, password):
+            session["user_id"] = user.user_id
+            session["name"] = user.name
+            session["role"] = user.role
+            return redirect(url_for("dashboard"))
         else:
-            flash("🚫 Invalid agency credentials or not authorized.", "error")
-
+            flash("🚫 Invalid agency credentials or password.", "error")
     return render_template("agency_login.html")
 
+# ---------------------------
+# REGISTER
+# ---------------------------
 @app.route("/register", methods=["GET", "POST"])
 def register():
     if request.method == "POST":
@@ -101,65 +127,43 @@ def register():
         contact_no = request.form["contact_no"].strip()
         role = "Public"
 
-        # ✅ Validate all fields
+        # Validations
         if not name or not email or not password or not contact_no:
             flash("⚠️ All fields are required.", "error")
             return redirect(url_for("register"))
-
-        # ✅ Validate email
         if not re.match(r"[^@]+@[^@]+\.[^@]+", email):
             flash("⚠️ Invalid email format.", "error")
             return redirect(url_for("register"))
-
-        # ✅ Check password match
         if password != confirm_password:
             flash("⚠️ Passwords do not match.", "error")
             return redirect(url_for("register"))
-
-        # ✅ Strong password check
         if len(password) < 8 or not re.search(r"[A-Z]", password) \
            or not re.search(r"[a-z]", password) or not re.search(r"[0-9]", password) \
            or not re.search(r"[@$!%*?&]", password):
-            flash("⚠️ Password must have 8+ characters, uppercase, lowercase, number, and special symbol.", "error")
+            flash("⚠️ Password must have 8+ chars, uppercase, lowercase, number, and special symbol.", "error")
             return redirect(url_for("register"))
-
-        # ✅ Contact number format
         if not re.match(r"^09\d{9}$", contact_no):
             flash("⚠️ Invalid contact number. Use 09XXXXXXXXX format.", "error")
             return redirect(url_for("register"))
 
-        conn = get_db_connection()
-        cur = conn.cursor(dictionary=True)
-
-        # ✅ Check for existing email
-        cur.execute("SELECT * FROM users WHERE email=%s", (email,))
-        existing = cur.fetchone()
-        if existing:
-            flash("⚠️ This email is already registered. Please log in instead.", "error")
-            cur.close()
-            conn.close()
+        if User.query.filter_by(email=email).first():
+            flash("⚠️ Email already registered. Please log in.", "error")
             return redirect(url_for("login"))
 
-        # ✅ Save new user
         hashed_pw = generate_password_hash(password)
-        cur.execute("""
-            INSERT INTO users (name, email, password, contact_no, role)
-            VALUES (%s, %s, %s, %s, %s)
-        """, (name, email, hashed_pw, contact_no, role))
-        conn.commit()
-        cur.close()
-        conn.close()
+        new_user = User(name=name, email=email, password=hashed_pw, contact_no=contact_no, role=role)
+        db.session.add(new_user)
+        db.session.commit()
 
-        # ✅ Success message
         flash("✅ Registration successful! You can now log in.", "success")
         return redirect(url_for("login"))
-
     return render_template("register.html")
 
-
+# ---------------------------
+# REPORT INCIDENT
+# ---------------------------
 @app.route("/report", methods=["GET", "POST"])
 def report():
-    # only logged-in users can report
     if "user_id" not in session or session["role"] != "Public":
         flash("You must be logged in as a public user to report an incident.")
         return redirect(url_for("login"))
@@ -187,36 +191,30 @@ def report():
             video_file.save(os.path.join(app.config["UPLOAD_FOLDER"], filename))
             video_filename = filename
 
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute(
-            """
-            INSERT INTO incidents (reported_by_user_id, incident_type, description, location, gps_lat, gps_long, status, date_reported, agencies_notified, image_path, video_path)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """,
-            (
-                session["user_id"],
-                incident_type,
-                description,
-                location,
-                gps_lat if gps_lat else None,
-                gps_long if gps_long else None,
-                "Pending",
-                datetime.now(),
-                agencies_text,
-                image_filename,
-                video_filename
-            ),
+        new_incident = Incident(
+            reported_by_user_id=session["user_id"],
+            incident_type=incident_type,
+            description=description,
+            location=location,
+            gps_lat=float(gps_lat) if gps_lat else None,
+            gps_long=float(gps_long) if gps_long else None,
+            status="Pending",
+            date_reported=datetime.now(),
+            agencies_notified=agencies_text,
+            image_path=image_filename,
+            video_path=video_filename
         )
-        conn.commit()
-        cur.close()
-        conn.close()
+        db.session.add(new_incident)
+        db.session.commit()
 
         flash(f"Incident reported successfully to: {agencies_text if agencies_text else 'No agency selected.'}")
         return redirect(url_for("dashboard"))
 
     return render_template("report.html")
 
+# ---------------------------
+# VIEW INCIDENTS
+# ---------------------------
 @app.route("/incidents")
 def incidents():
     if "user_id" not in session:
@@ -226,89 +224,43 @@ def incidents():
     user_id = session["user_id"]
     filter_status = request.args.get("status")
 
-    conn = get_db_connection()
-    cur = conn.cursor(dictionary=True)
-
-    # 👇 Public users: only see their own reports
     if role == "Public":
-        query = """
-            SELECT i.incident_id, i.incident_type, i.description, i.location,
-                   i.gps_lat, i.gps_long, i.status, i.date_reported,
-                   i.agencies_notified, i.image_path, i.video_path,
-                   u.name AS reported_by
-            FROM incidents i
-            JOIN users u ON i.reported_by_user_id = u.user_id
-            WHERE i.reported_by_user_id = %s
-        """
-        params = [user_id]
-
+        query = Incident.query.filter_by(reported_by_user_id=user_id)
         if filter_status:
-            query += " AND i.status = %s"
-            params.append(filter_status)
-
-    # 👇 Agencies
+            query = query.filter_by(status=filter_status)
     else:
-        query = """
-            SELECT i.incident_id, i.incident_type, i.description, i.location,
-                   i.gps_lat, i.gps_long, i.status, i.date_reported,
-                   i.agencies_notified, i.image_path, i.video_path,
-                   u.name AS reported_by
-            FROM incidents i
-            JOIN users u ON i.reported_by_user_id = u.user_id
-        """
-        params = []
-
+        query = Incident.query
         if role != "Admin":
-            query += " WHERE i.agencies_notified LIKE %s"
-            params.append(f"%{role}%")
-
+            query = query.filter(Incident.agencies_notified.like(f"%{role}%"))
         if filter_status:
-            if role == "Admin":
-                query += " WHERE"
-            else:
-                query += " AND"
-            query += " i.status = %s"
-            params.append(filter_status)
+            query = query.filter_by(status=filter_status)
 
-    query += " ORDER BY i.date_reported DESC"
+    all_incidents = query.order_by(Incident.date_reported.desc()).all()
 
-    cur.execute(query, tuple(params))
-    all_incidents = cur.fetchall()
-    cur.close()
-    conn.close()
-
-    # 🧩 Group incidents by month
     grouped = defaultdict(list)
     for inc in all_incidents:
-        if isinstance(inc["date_reported"], datetime):
-            month_label = inc["date_reported"].strftime("%B %Y")
-        else:
-            try:
-                month_label = datetime.strptime(str(inc["date_reported"]), "%Y-%m-%d %H:%M:%S").strftime("%B %Y")
-            except:
-                month_label = "Unknown Date"
+        month_label = inc.date_reported.strftime("%B %Y") if inc.date_reported else "Unknown Date"
         grouped[month_label].append(inc)
 
-    # Sort newest month first
     grouped_sorted = dict(sorted(grouped.items(), reverse=True))
-
     return render_template("incidents.html", incidents_by_month=grouped_sorted, role=role)
 
+# ---------------------------
+# DASHBOARD
+# ---------------------------
 @app.route("/dashboard")
 def dashboard():
     if "user_id" not in session:
         return redirect(url_for("login"))
-    
-    if session["role"] in ("BFP", "PNP", "CDRRMO"):
-        return render_template("dashboard.html", name=session["name"], role=session["role"])
-    
     return render_template("dashboard.html", name=session["name"], role=session["role"])
 
+# ---------------------------
+# UPDATE STATUS
+# ---------------------------
 @app.route("/update_status/<int:incident_id>", methods=["POST"])
 def update_status(incident_id):
     if "user_id" not in session:
         return redirect(url_for("login"))
-
     if session["role"] not in ("BFP", "PNP", "CDRRMO"):
         return "Access denied", 403
 
@@ -316,120 +268,83 @@ def update_status(incident_id):
     if new_status not in ("Pending", "Verified", "Resolved"):
         return "Invalid status", 400
 
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute(
-        "UPDATE incidents SET status=%s WHERE incident_id=%s",
-        (new_status, incident_id),
-    )
-    conn.commit()
-    cur.close()
-    conn.close()
+    incident = Incident.query.get(incident_id)
+    if incident:
+        incident.status = new_status
+        db.session.commit()
 
     flash(f"Incident {incident_id} status updated to {new_status}.")
     return redirect(url_for("incidents"))
 
+# ---------------------------
+# API: NEW INCIDENTS
+# ---------------------------
 @app.route("/api/new_incidents")
 def api_new_incidents():
-    # require login
     if "user_id" not in session:
         return jsonify({"error": "login required"}), 401
 
     role = session.get("role")
-    # get 'since' param as unix timestamp (seconds). Default 0 to return everything.
     since_param = request.args.get("since", "0")
     try:
         since = float(since_param)
     except ValueError:
         since = 0.0
 
-    conn = get_db_connection()
-    cur = conn.cursor(dictionary=True)
-
     if role == "Admin":
-        cur.execute("""
-            SELECT i.incident_id, i.incident_type, i.description, i.location,
-                   i.gps_lat, i.gps_long, i.status, UNIX_TIMESTAMP(i.date_reported) AS ts,
-                   i.agencies_notified, u.name AS reported_by
-            FROM incidents i
-            JOIN users u ON i.reported_by_user_id = u.user_id
-            WHERE UNIX_TIMESTAMP(i.date_reported) > %s
-            ORDER BY i.date_reported ASC
-        """, (since,))
+        incidents = Incident.query.filter(db.func.UNIX_TIMESTAMP(Incident.date_reported) > since).all()
     else:
-        # only return incidents that include this agency in agencies_notified AND are newer than 'since'
-        cur.execute("""
-            SELECT i.incident_id, i.incident_type, i.description, i.location,
-                   i.gps_lat, i.gps_long, i.status, UNIX_TIMESTAMP(i.date_reported) AS ts,
-                   i.agencies_notified, u.name AS reported_by
-            FROM incidents i
-            JOIN users u ON i.reported_by_user_id = u.user_id
-            WHERE UNIX_TIMESTAMP(i.date_reported) > %s
-              AND i.agencies_notified LIKE %s
-            ORDER BY i.date_reported ASC
-        """, (since, f"%{role}%"))
+        incidents = Incident.query.filter(
+            db.func.UNIX_TIMESTAMP(Incident.date_reported) > since,
+            Incident.agencies_notified.like(f"%{role}%")
+        ).all()
 
-    rows = cur.fetchall()
-    cur.close()
-    conn.close()
-
-    # sanitize/transform rows to JSON-safe objects (ts is numeric)
     result = []
-    for r in rows:
+    for inc in incidents:
+        user = User.query.get(inc.reported_by_user_id)
         result.append({
-            "incident_id": r["incident_id"],
-            "incident_type": r["incident_type"],
-            "description": r["description"],
-            "location": r["location"],
-            "gps_lat": r["gps_lat"],
-            "gps_long": r["gps_long"],
-            "status": r["status"],
-            "ts": r["ts"],  # unix timestamp (seconds)
-            "agencies_notified": r.get("agencies_notified"),
-            "reported_by": r.get("reported_by")
+            "incident_id": inc.incident_id,
+            "incident_type": inc.incident_type,
+            "description": inc.description,
+            "location": inc.location,
+            "gps_lat": inc.gps_lat,
+            "gps_long": inc.gps_long,
+            "status": inc.status,
+            "ts": int(inc.date_reported.timestamp()),
+            "agencies_notified": inc.agencies_notified,
+            "reported_by": user.name if user else "Unknown"
         })
-
     return jsonify(result)
 
+# ---------------------------
+# INCIDENT DETAIL
+# ---------------------------
 @app.route("/incident/<int:incident_id>")
 def incident_detail(incident_id):
     if "user_id" not in session:
         return redirect(url_for("login"))
 
-    role = session["role"]
-    user_id = session["user_id"]
-
-    conn = get_db_connection()
-    cur = conn.cursor(dictionary=True)
-    cur.execute("""
-        SELECT i.*, u.name AS reported_by, u.contact_no
-        FROM incidents i
-        JOIN users u ON i.reported_by_user_id = u.user_id
-        WHERE i.incident_id = %s
-    """, (incident_id,))
-    incident = cur.fetchone()
-    cur.close()
-    conn.close()
-
-    print("DEBUG incident detail:", incident)
+    incident = Incident.query.get(incident_id)
+    user = User.query.get(incident.reported_by_user_id) if incident else None
 
     if not incident:
         return "Incident not found", 404
 
-    return render_template("incident_detail.html", incident=incident)
+    return render_template("incident_detail.html", incident=incident, reporter=user)
 
+# ---------------------------
+# LOGOUT
+# ---------------------------
 @app.route("/logout")
 def logout():
-    # Keep the role before clearing session
     role = session.get("role")
     session.clear()
-
-    # Redirect to correct login page based on role
     if role in ("BFP", "PNP", "CDRRMO"):
         return redirect(url_for("agency_login"))
-    else:
-        return redirect(url_for("login"))
+    return redirect(url_for("login"))
 
-
+# ---------------------------
+# RUN APP
+# ---------------------------
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
