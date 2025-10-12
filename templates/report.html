@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Report an Incident | Smart Incident Reporting</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"> <!-- 👈 mobile scaling -->
+  <style>
+    body {
+      font-family: "Segoe UI", Arial, sans-serif;
+      background: #f4f6f9;
+      margin: 0;
+      padding: 0;
+    }
+
+    .container {
+      max-width: 700px;
+      background: #fff;
+      margin: 30px auto;
+      padding: 25px;
+      border-radius: 10px;
+      box-shadow: 0 3px 10px rgba(0, 0, 0, 0.1);
+    }
+
+    h2 {
+      text-align: center;
+      color: #007bff;
+      margin-bottom: 20px;
+    }
+
+    label {
+      font-weight: bold;
+      display: block;
+      margin-top: 15px;
+    }
+
+    input[type="text"],
+    input[type="file"],
+    select,
+    textarea {
+      width: 100%;
+      padding: 10px;
+      margin-top: 5px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      font-size: 14px;
+      box-sizing: border-box;
+    }
+
+    fieldset {
+      border: 1px solid #ccc;
+      padding: 10px;
+      margin-top: 10px;
+      border-radius: 6px;
+    }
+
+    legend {
+      font-weight: bold;
+      color: #007bff;
+    }
+
+    button {
+      background: #007bff;
+      color: white;
+      border: none;
+      padding: 12px 20px;
+      margin-top: 20px;
+      border-radius: 6px;
+      width: 100%;
+      font-size: 1em;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background: #0056b3;
+    }
+
+    a {
+      display: block;
+      text-align: center;
+      margin-top: 15px;
+      color: #007bff;
+      text-decoration: none;
+    }
+
+    a:hover {
+      text-decoration: underline;
+    }
+
+    #manual_result {
+      color: #007bff;
+      font-size: 14px;
+    }
+
+    /* 📱 Mobile Responsiveness */
+    @media (max-width: 600px) {
+      .container {
+        margin: 10px;
+        padding: 20px;
+      }
+
+      h2 {
+        font-size: 1.4em;
+      }
+
+      button {
+        font-size: 1em;
+        padding: 14px;
+      }
+
+      input[type="text"],
+      select,
+      textarea {
+        font-size: 16px; /* ✅ easier to tap on mobile */
+      }
+
+      fieldset {
+        padding: 8px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>📢 Report an Incident</h2>
+    <form action="/report" method="post" enctype="multipart/form-data">
+      <label>Incident Type:</label>
+      <select name="incident_type" id="incident_type" required>
+        <option value="">-- Select --</option>
+        <option value="Fire">🔥 Fire</option>
+        <option value="Crime">🚓 Crime</option>
+        <option value="Accident">🚑 Accident</option>
+        <option value="Other">⚠️ Other</option>
+      </select>
+
+      <fieldset>
+        <legend>Select Agencies to Notify</legend>
+        <label><input type="checkbox" name="agencies" value="BFP"> BFP (Fire Protection)</label><br>
+        <label><input type="checkbox" name="agencies" value="PNP"> PNP (Police)</label><br>
+        <label><input type="checkbox" name="agencies" value="CDRRMO"> CDRRMO (Disaster Office)</label>
+      </fieldset>
+
+      <label>Description:</label>
+      <textarea name="description" rows="4" required></textarea>
+
+      <fieldset>
+        <legend>Incident Location</legend>
+        <label><input type="radio" name="location_option" value="gps" checked onclick="toggleLocationInput()"> Use my current location</label><br>
+        <label><input type="radio" name="location_option" value="manual" onclick="toggleLocationInput()"> Enter location manually</label><br><br>
+
+        <div id="gps_box"></div>
+
+        <div id="manual_box" style="display:none;">
+          <label>Enter Location:</label><br>
+          <input type="text" id="manual_location" name="location" placeholder="e.g., Kidapawan City Hall"><br>
+          <button type="button" onclick="geocodeAddress()">Get Coordinates</button><br>
+          <p id="manual_result"></p>
+        </div>
+      </fieldset>
+
+      <label>Attach an Image (optional):</label>
+      <input type="file" name="incident_image" accept="image/*">
+
+      <label>Attach a Video (optional):</label>
+      <input type="file" name="incident_video" accept="video/*">
+
+      <input type="hidden" name="gps_lat" id="gps_lat">
+      <input type="hidden" name="gps_long" id="gps_long">
+
+      <button type="submit">📤 Submit Report</button>
+    </form>
+    <a href="/dashboard">⬅ Back to Dashboard</a>
+  </div>
+
+  <script>
+    function toggleLocationInput() {
+      const option = document.querySelector('input[name="location_option"]:checked').value;
+      document.getElementById("gps_box").style.display = option === "gps" ? "block" : "none";
+      document.getElementById("manual_box").style.display = option === "manual" ? "block" : "none";
+    }
+
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(function(pos) {
+        document.getElementById('gps_lat').value = pos.coords.latitude;
+        document.getElementById('gps_long').value = pos.coords.longitude;
+      });
+    }
+
+    function geocodeAddress() {
+      const address = document.getElementById("manual_location").value;
+      if (!address) {
+        alert("Please enter a location.");
+        return;
+      }
+
+      fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}`)
+        .then(response => response.json())
+        .then(data => {
+          if (data.length > 0) {
+            const lat = data[0].lat;
+            const lon = data[0].lon;
+            document.getElementById("gps_lat").value = lat;
+            document.getElementById("gps_long").value = lon;
+            document.getElementById("manual_result").innerHTML = `✅ Coordinates found: ${lat}, ${lon}`;
+          } else {
+            document.getElementById("manual_result").innerHTML = "❌ No location found.";
+          }
+        })
+        .catch(err => {
+          console.error(err);
+          alert("Error fetching location.");
+        });
+    }
+  </script>
+</body>
+</html>

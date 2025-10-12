@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Incident Dashboard</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body {
+      font-family: "Segoe UI", Arial, sans-serif;
+      background: #f4f6f9;
+      margin: 0;
+      padding: 0;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 20px auto;
+      background: #fff;
+      padding: 25px;
+      border-radius: 10px;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    }
+
+    h2 {
+      text-align: center;
+      color: #007bff;
+      margin-bottom: 15px;
+    }
+
+    h3 {
+      color: #007bff;
+      margin-top: 30px;
+      margin-bottom: 10px;
+      border-left: 4px solid #007bff;
+      padding-left: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .month-count {
+      font-size: 0.9em;
+      color: #555;
+      background: #e9f1ff;
+      padding: 4px 10px;
+      border-radius: 12px;
+    }
+
+    #newAlert {
+      display: none;
+      background: #fff3cd;
+      border: 1px solid #ffeeba;
+      padding: 10px;
+      margin-bottom: 15px;
+      border-radius: 6px;
+      text-align: center;
+    }
+
+    #newAlert button {
+      margin-left: 10px;
+      padding: 6px 10px;
+      border: none;
+      border-radius: 4px;
+      background: #007bff;
+      color: white;
+      cursor: pointer;
+    }
+
+    #newAlert button:hover {
+      background: #0056b3;
+    }
+
+    form {
+      margin-bottom: 15px;
+      text-align: right;
+    }
+
+    select {
+      padding: 8px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      font-size: 14px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: #fff;
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+      margin-bottom: 20px;
+    }
+
+    th, td {
+      padding: 12px 10px;
+      border-bottom: 1px solid #eee;
+      text-align: left;
+    }
+
+    th {
+      background: #007bff;
+      color: white;
+      text-transform: uppercase;
+      font-size: 14px;
+      letter-spacing: 0.5px;
+    }
+
+    tr:hover {
+      background-color: #f9f9f9;
+    }
+
+    img, video {
+      border-radius: 6px;
+      max-width: 100px;
+      height: auto;
+      display: block;
+    }
+
+    .status-pending {
+      color: #ff9800;
+      font-weight: bold;
+    }
+    .status-verified {
+      color: #2196f3;
+      font-weight: bold;
+    }
+    .status-resolved {
+      color: #4caf50;
+      font-weight: bold;
+    }
+
+    .btn-update {
+      background: #007bff;
+      color: #fff;
+      padding: 6px 10px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+
+    .btn-update:hover {
+      background: #0056b3;
+    }
+
+    .view-link {
+      display: inline-block;
+      color: #007bff;
+      text-decoration: none;
+      margin-top: 4px;
+    }
+
+    .view-link:hover {
+      text-decoration: underline;
+    }
+
+    .back-link {
+      display: inline-block;
+      padding: 10px 18px;
+      background: #007bff;
+      color: white;
+      text-decoration: none;
+      border-radius: 6px;
+      text-align: center;
+      margin-top: 15px;
+    }
+
+    .back-link:hover {
+      background: #0056b3;
+    }
+
+    /* 📱 Responsive Design */
+    @media (max-width: 768px) {
+      .container {
+        padding: 15px;
+      }
+
+      table {
+        font-size: 13px;
+        display: block;
+        overflow-x: auto;
+        white-space: nowrap;
+      }
+
+      th, td {
+        padding: 10px 8px;
+      }
+
+      h2 {
+        font-size: 1.4em;
+      }
+
+      .btn-update, select {
+        font-size: 13px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>📋 Incident Dashboard ({{ role }})</h2>
+
+    <audio id="alertSound" src="{{ url_for('static', filename='sounds/alert.mp3') }}" preload="auto"></audio>
+
+    <div id="newAlert">
+      🚨 <strong id="newCount">0</strong> new incident(s) — 
+      <span id="newDetails"></span>
+      <button onclick="location.reload()">Refresh</button>
+      <button onclick="document.getElementById('newAlert').style.display='none'">Dismiss</button>
+    </div>
+
+    <!-- Filter by Status -->
+    <form method="get" action="/incidents">
+      <label for="status">Filter:</label>
+      <select name="status" id="status" onchange="this.form.submit()">
+        <option value="">All</option>
+        <option value="Pending" {% if request.args.get('status') == "Pending" %}selected{% endif %}>Pending</option>
+        <option value="Verified" {% if request.args.get('status') == "Verified" %}selected{% endif %}>Verified</option>
+        <option value="Resolved" {% if request.args.get('status') == "Resolved" %}selected{% endif %}>Resolved</option>
+      </select>
+    </form>
+
+    <!-- ✅ Grouped by Month -->
+    {% for month, incidents in incidents_by_month.items() %}
+      <h3>
+        📅 {{ month }}
+        <span class="month-count">{{ incidents|length }} Report{{ 's' if incidents|length > 1 else '' }}</span>
+      </h3>
+
+      <table>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Location</th>
+          <th>Reported By</th>
+          <th>Status</th>
+          <th>Date</th>
+          <th>Map</th>
+          <th>Image</th>
+          <th>Video</th>
+          <th>Action</th>
+        </tr>
+
+        {% for inc in incidents %}
+        <tr>
+          <td>{{ inc.incident_type }}</td>
+          <td>{{ inc.description }}</td>
+          <td>{{ inc.location }}</td>
+          <td>{{ inc.reported_by }}</td>
+          <td class="status-{{ inc.status|lower }}">{{ inc.status }}</td>
+          <td>{{ inc.date_reported }}</td>
+          <td>
+            {% if inc.gps_lat and inc.gps_long %}
+              <a target="_blank" href="https://www.openstreetmap.org/?mlat={{ inc.gps_lat }}&mlon={{ inc.gps_long }}#map=18/{{ inc.gps_lat }}/{{ inc.gps_long }}">
+                🌍 View Map
+              </a>
+            {% else %}
+              N/A
+            {% endif %}
+          </td>
+          <td>
+            {% if inc.image_path %}
+              <a href="{{ url_for('static', filename='uploads/' ~ inc.image_path) }}" target="_blank">
+                <img src="{{ url_for('static', filename='uploads/' ~ inc.image_path) }}">
+              </a>
+            {% else %}
+              No Image
+            {% endif %}
+          </td>
+          <td>
+            {% if inc.video_path %}
+              <video width="120" controls>
+                <source src="{{ url_for('static', filename='uploads/' ~ inc.video_path) }}" type="video/mp4">
+                Your browser does not support the video tag.
+              </video>
+            {% else %}
+              No Video
+            {% endif %}
+          </td>
+          <td>
+            <form action="/update_status/{{ inc.incident_id }}" method="post" style="display:inline;">
+              <select name="status">
+                <option value="Pending" {% if inc.status == "Pending" %}selected{% endif %}>Pending</option>
+                <option value="Verified" {% if inc.status == "Verified" %}selected{% endif %}>Verified</option>
+                <option value="Resolved" {% if inc.status == "Resolved" %}selected{% endif %}>Resolved</option>
+              </select>
+              <button type="submit" class="btn-update">Update</button>
+            </form>
+            <a href="/incident/{{ inc.incident_id }}" class="view-link">View</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </table>
+    {% endfor %}
+
+    <a href="/dashboard" class="back-link">⬅ Back to Dashboard</a>
+  </div>
+
+  <script>
+    let lastTs = Math.floor(Date.now() / 1000);
+    const POLL_INTERVAL = 8000;
+
+    async function checkNewIncidents() {
+      try {
+        const resp = await fetch(`/api/new_incidents?since=${lastTs}`, { credentials: 'same-origin' });
+        if (!resp.ok) return;
+        const data = await resp.json();
+        if (Array.isArray(data) && data.length > 0) {
+          document.getElementById('newCount').textContent = data.length;
+          document.getElementById('newAlert').style.display = 'block';
+          const details = data.map(i => `${i.incident_type} @ ${i.location}`).join(" | ");
+          document.getElementById('newDetails').textContent = details;
+
+          const sound = document.getElementById('alertSound');
+          if (sound) {
+            sound.currentTime = 0;
+            sound.play().catch(err => console.log("Autoplay blocked:", err));
+          }
+
+          const maxTs = data.reduce((m, item) => Math.max(m, item.ts || 0), lastTs);
+          lastTs = Math.max(lastTs, maxTs);
+        }
+      } catch (err) {
+        console.error('poll error', err);
+      }
+    }
+
+    setInterval(checkNewIncidents, POLL_INTERVAL);
+    setTimeout(checkNewIncidents, 1000);
+  </script>
+</body>
+</html>

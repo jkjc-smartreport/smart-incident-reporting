@@ -1,0 +1,113 @@
+
+SMART INCIDENT REPORTING SYSTEM - INSTALLATION & HTTPS GUIDE
+============================================================
+
+📦 REQUIREMENTS TO INSTALL (on any new computer)
+------------------------------------------------
+1. Install **Python 3.10+**
+   👉 Download: https://www.python.org/downloads/
+
+2. Install **MySQL Community Server**
+   👉 Download: https://dev.mysql.com/downloads/mysql/
+
+3. Install **MySQL Workbench** (optional but helpful)
+   👉 Download: https://dev.mysql.com/downloads/workbench/
+
+4. Install **pip** (Python package manager)
+   Usually installed with Python automatically.
+   To check:
+       pip --version
+
+5. Clone or copy your project folder (e.g., smart_incident_reporting)
+   Make sure it contains:
+       - app.py
+       - templates/
+       - static/
+       - config.py
+       - requirements.txt (if available)
+
+------------------------------------------------
+🧰 SETUP MYSQL DATABASE
+------------------------------------------------
+1. Open MySQL Workbench or terminal.
+2. Create a database, for example:
+       CREATE DATABASE incident_db;
+3. Import your SQL dump if available (your tables and data).
+
+4. Update your config.py with your new credentials:
+       import mysql.connector
+
+       def get_db_connection():
+           return mysql.connector.connect(
+               host="localhost",
+               user="root",
+               password="YOUR_PASSWORD",
+               database="incident_db"
+           )
+
+------------------------------------------------
+⚙️ INSTALL REQUIRED PYTHON LIBRARIES
+------------------------------------------------
+In Command Prompt or VS Code terminal, run:
+
+   pip install flask mysql-connector-python werkzeug
+
+------------------------------------------------
+🚀 RUN THE SYSTEM (LOCALHOST)
+------------------------------------------------
+In your project folder, run this command:
+
+   python app.py
+
+Then open your browser and go to:
+   http://127.0.0.1:5000/
+
+------------------------------------------------
+🌍 MAKE YOUR APP ONLINE (HTTPS USING NGROK)
+------------------------------------------------
+1. Download **ngrok** from:
+   👉 https://ngrok.com/download
+
+2. Sign up at https://dashboard.ngrok.com/
+   Copy your **AuthToken** from your dashboard.
+
+3. In Command Prompt, run:
+       ngrok config add-authtoken YOUR_AUTHTOKEN
+
+4. Start your Flask app:
+       python app.py
+
+5. Open another terminal (while Flask is running) and run:
+       ngrok http 5000
+
+6. You’ll get a link like this:
+       https://randomname.ngrok-free.app
+
+7. Share that link — it’s your HTTPS public version of your app!
+
+------------------------------------------------
+🧠 OPTIONAL SECURITY & HTTPS NOTES
+------------------------------------------------
+- You can keep these lines in app.py for session protection:
+      app.config['SESSION_COOKIE_HTTPONLY'] = True
+      app.config['SESSION_COOKIE_SECURE'] = True
+      app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+
+- Always close Flask with CTRL + C when finished.
+
+------------------------------------------------
+📲 USING ON PHONE
+------------------------------------------------
+If you run ngrok, your phone can access your system through the HTTPS link.
+
+Example:
+   https://tinyurl.com/smart-incident
+
+------------------------------------------------
+✅ SUMMARY
+------------------------------------------------
+- Install Python + MySQL
+- Import your database
+- Run Flask locally
+- Use ngrok for HTTPS access
+- Share the ngrok HTTPS link to test mobile features

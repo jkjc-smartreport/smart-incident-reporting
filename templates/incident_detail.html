@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Incident Details</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body {
+      font-family: "Segoe UI", Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+      background: #f4f6f9;
+    }
+
+    .container {
+      max-width: 900px;
+      margin: 30px auto;
+      background: #fff;
+      padding: 25px;
+      border-radius: 12px;
+      box-shadow: 0 3px 10px rgba(0, 0, 0, 0.1);
+    }
+
+    h2 {
+      color: #007bff;
+      text-align: center;
+      margin-bottom: 25px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: #fff;
+      overflow: hidden;
+      border-radius: 10px;
+    }
+
+    th, td {
+      text-align: left;
+      padding: 12px 15px;
+      border-bottom: 1px solid #eee;
+      vertical-align: top;
+    }
+
+    th {
+      background: #f0f5ff;
+      color: #333;
+      width: 200px;
+      font-weight: 600;
+    }
+
+    td {
+      background: #fff;
+      color: #555;
+    }
+
+    img, video {
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      margin-top: 10px;
+      max-width: 100%;
+      height: auto;
+      display: block;
+    }
+
+    a.map-link {
+      color: #007bff;
+      text-decoration: none;
+      font-weight: 500;
+    }
+
+    a.map-link:hover {
+      text-decoration: underline;
+    }
+
+    .back-link {
+      display: block;
+      width: fit-content;
+      margin: 20px auto 0;
+      padding: 10px 20px;
+      background: #007bff;
+      color: white;
+      text-decoration: none;
+      border-radius: 6px;
+      font-weight: 500;
+      text-align: center;
+      transition: background 0.3s;
+    }
+
+    .back-link:hover {
+      background: #0056b3;
+    }
+
+    /* Status color badges */
+    .status {
+      display: inline-block;
+      padding: 5px 10px;
+      border-radius: 15px;
+      font-weight: bold;
+      color: white;
+    }
+    .status-pending { background: #ff9800; }
+    .status-verified { background: #2196f3; }
+    .status-resolved { background: #4caf50; }
+
+    /* Responsive layout */
+    @media (max-width: 768px) {
+      .container {
+        margin: 10px;
+        padding: 15px;
+      }
+
+      table {
+        font-size: 14px;
+        display: block;
+        overflow-x: auto;
+        white-space: nowrap;
+      }
+
+      th {
+        width: 40%;
+      }
+
+      h2 {
+        font-size: 1.4em;
+      }
+
+      .back-link {
+        width: 100%;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>📌 Incident Details</h2>
+
+    <table>
+      <tr><th>Type</th><td>{{ incident.incident_type }}</td></tr>
+      <tr><th>Description</th><td>{{ incident.description }}</td></tr>
+      <tr><th>Location</th><td>{{ incident.location }}</td></tr>
+      <tr><th>Reported By</th><td>{{ incident.reported_by }}</td></tr>
+      <tr><th>Reporter Contact</th><td>{{ incident.contact_no }}</td></tr>
+      <tr>
+        <th>Status</th>
+        <td>
+          <span class="status status-{{ incident.status|lower }}">{{ incident.status }}</span>
+        </td>
+      </tr>
+      <tr><th>Date Reported</th><td>{{ incident.date_reported }}</td></tr>
+
+      {% if incident.gps_lat and incident.gps_long %}
+      <tr>
+        <th>Map</th>
+        <td>
+          <a class="map-link" target="_blank"
+             href="https://www.openstreetmap.org/?mlat={{ incident.gps_lat }}&mlon={{ incident.gps_long }}#map=18/{{ incident.gps_lat }}/{{ incident.gps_long }}">
+             📍 View on Map
+          </a>
+        </td>
+      </tr>
+      {% endif %}
+
+      {% if incident.image_path %}
+      <tr>
+        <th>Attached Image</th>
+        <td>
+          <img src="{{ url_for('static', filename='uploads/' ~ incident.image_path) }}" alt="Incident Image">
+        </td>
+      </tr>
+      {% endif %}
+
+      {% if incident.video_path %}
+      <tr>
+        <th>Attached Video</th>
+        <td>
+          <video controls>
+            <source src="{{ url_for('static', filename='uploads/' ~ incident.video_path) }}" type="video/mp4">
+            Your browser does not support the video tag.
+          </video>
+        </td>
+      </tr>
+      {% endif %}
+    </table>
+
+    <a href="/incidents" class="back-link">⬅ Back to Dashboard</a>
+  </div>
+</body>
+</html>

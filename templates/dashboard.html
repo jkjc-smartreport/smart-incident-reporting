@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dashboard | Smart Incident Reporting</title>
+  <style>
+    body {
+      font-family: "Segoe UI", Arial, sans-serif;
+      background: #f4f8fc;
+      margin: 0;
+      padding: 0;
+    }
+    header {
+      background: #0077b6;
+      color: white;
+      padding: 15px 30px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    }
+    header h1 {
+      font-size: 22px;
+      margin: 0;
+    }
+    header .user-info {
+      font-size: 15px;
+    }
+    main {
+      padding: 30px;
+      max-width: 900px;
+      margin: 0 auto;
+    }
+    .card {
+      background: white;
+      border-radius: 10px;
+      box-shadow: 0 3px 10px rgba(0,0,0,0.1);
+      padding: 25px;
+      margin-bottom: 20px;
+    }
+    .card h2 {
+      margin-top: 0;
+      color: #0077b6;
+    }
+    a.button {
+      display: inline-block;
+      padding: 10px 18px;
+      border-radius: 6px;
+      background: #0077b6;
+      color: white;
+      text-decoration: none;
+      font-weight: 500;
+      transition: background 0.3s;
+      margin-right: 10px;
+    }
+    a.button:hover {
+      background: #023e8a;
+    }
+    footer {
+      text-align: center;
+      padding: 20px;
+      font-size: 13px;
+      color: #555;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Smart Incident Reporting System</h1>
+    <div class="user-info">
+      👤 {{ name }} ({{ role }}) | 
+      <a href="/logout" style="color:#ffd;">Logout</a>
+    </div>
+  </header>
+
+  <main>
+    {% if role == "Public" %}
+    <div class="card">
+      <h2>My Incident Reports</h2>
+      <p>You can report a new incident or review your past submissions below.</p>
+      <a href="/report" class="button">➕ Report New Incident</a>
+      <a href="/incidents" class="button" style="background:#0096c7;">📋 View My Reports</a>
+    </div>
+    {% endif %}
+
+    {% if role in ["BFP", "PNP", "CDRRMO", "Admin"] %}
+    <div class="card">
+      <h2>Incident Management</h2>
+      <p>Monitor, verify, and resolve reported incidents in real time.</p>
+      <a href="/incidents" class="button">🚨 View All Incidents</a>
+    </div>
+    {% endif %}
+  </main>
+
+  <footer>
+    &copy; 2025 Smart Incident Reporting System — Kidapawan City
+  </footer>
+</body>
+</html>
