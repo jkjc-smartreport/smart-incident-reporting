@@ -162,25 +162,27 @@
       {% endif %}
 
       {% if incident.image_path %}
-      <tr>
-        <th>Attached Image</th>
-        <td>
-          <img src="{{ url_for('static', filename='uploads/' ~ incident.image_path) }}" alt="Incident Image">
-        </td>
-      </tr>
-      {% endif %}
+<tr>
+  <th>Attached Image</th>
+  <td>
+    <img src="{{ url_for('uploaded_file', filename=incident.image_path) }}" 
+         alt="Incident Image">
+  </td>
+</tr>
+{% endif %}
 
       {% if incident.video_path %}
-      <tr>
-        <th>Attached Video</th>
-        <td>
-          <video controls>
-            <source src="{{ url_for('static', filename='uploads/' ~ incident.video_path) }}" type="video/mp4">
-            Your browser does not support the video tag.
-          </video>
-        </td>
-      </tr>
-      {% endif %}
+<tr>
+  <th>Attached Video</th>
+  <td>
+    <video controls>
+      <source src="{{ url_for('uploaded_file', filename=incident.video_path) }}" type="video/mp4">
+      Your browser does not support the video tag.
+    </video>
+  </td>
+</tr>
+{% endif %}
+
     </table>
 
     <a href="/incidents" class="back-link">⬅ Back to Dashboard</a>
