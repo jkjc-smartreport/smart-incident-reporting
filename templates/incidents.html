@@ -169,7 +169,6 @@
       background: #0056b3;
     }
 
-    /* 📱 Responsive Design */
     @media (max-width: 768px) {
       .container {
         padding: 15px;
@@ -220,7 +219,7 @@
       </select>
     </form>
 
-    <!-- ✅ Grouped by Month -->
+    <!-- Grouped by Month -->
     {% for month, incidents in incidents_by_month.items() %}
       <h3>
         📅 {{ month }}
@@ -260,8 +259,8 @@
           </td>
           <td>
             {% if inc.image_path %}
-              <a href="{{ url_for('static', filename='uploads/' ~ inc.image_path) }}" target="_blank">
-                <img src="{{ url_for('static', filename='uploads/' ~ inc.image_path) }}">
+              <a href="{{ url_for('uploaded_file', filename=inc.image_path) }}" target="_blank">
+                <img src="{{ url_for('uploaded_file', filename=inc.image_path) }}">
               </a>
             {% else %}
               No Image
@@ -270,7 +269,7 @@
           <td>
             {% if inc.video_path %}
               <video width="120" controls>
-                <source src="{{ url_for('static', filename='uploads/' ~ inc.video_path) }}" type="video/mp4">
+                <source src="{{ url_for('uploaded_file', filename=inc.video_path) }}" type="video/mp4">
                 Your browser does not support the video tag.
               </video>
             {% else %}
