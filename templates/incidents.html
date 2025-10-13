@@ -204,8 +204,8 @@
     <div id="newAlert">
   🚨 <strong id="newCount">0</strong> new incident(s) — 
   <span id="newDetails"></span>
-  <button onclick="location.reload()">Refresh</button>
-  <button onclick="dismissAlert()">Dismiss</button>  <!-- ✅ Changed -->
+  <button onclick="resetAlert()">Refresh</button>
+  <button onclick="dismissAlert()">Dismiss</button>
 </div>
 
     <!-- Filter by Status -->
@@ -296,45 +296,76 @@
   </div>
 
   <script>
-    let lastTs = Math.floor(Date.now() / 1000);
-const POLL_INTERVAL = 8000;
-let alertDismissed = false; // 👈 Added this flag
+  let lastTs = localStorage.getItem("lastTs") 
+    ? parseInt(localStorage.getItem("lastTs")) 
+    : Math.floor(Date.now() / 1000);
 
-async function checkNewIncidents() {
-  if (alertDismissed) return; // 👈 Don't check again if dismissed
+  const POLL_INTERVAL = 8000;
+  let alertDismissed = localStorage.getItem("alertDismissed") === "true";
 
-  try {
-    const resp = await fetch(`/api/new_incidents?since=${lastTs}`, { credentials: 'same-origin' });
-    if (!resp.ok) return;
-    const data = await resp.json();
-    if (Array.isArray(data) && data.length > 0) {
-      document.getElementById('newCount').textContent = data.length;
-      document.getElementById('newAlert').style.display = 'block';
-      const details = data.map(i => `${i.incident_type} @ ${i.location}`).join(" | ");
-      document.getElementById('newDetails').textContent = details;
+  async function checkNewIncidents() {
+    try {
+      const resp = await fetch(`/api/new_incidents?since=${lastTs}`, { credentials: 'same-origin' });
+      if (!resp.ok) return;
+      const data = await resp.json();
 
-      const sound = document.getElementById('alertSound');
-      if (sound) {
-        sound.currentTime = 0;
-        sound.play().catch(err => console.log("Autoplay blocked:", err));
+      if (Array.isArray(data) && data.length > 0) {
+        // Only show alert if user hasn’t dismissed it
+        if (!alertDismissed) {
+          document.getElementById('newCount').textContent = data.length;
+          document.getElementById('newAlert').style.display = 'block';
+
+          // List details
+          const details = data.map(i => `${i.incident_type} @ ${i.location}`).join(" | ");
+          document.getElementById('newDetails').textContent = details;
+
+          // Play sound only once
+          const sound = document.getElementById('alertSound');
+          if (sound && !sound.dataset.playing) {
+            sound.dataset.playing = "true";
+            sound.currentTime = 0;
+            sound.play().catch(err => console.log("Autoplay blocked:", err));
+            setTimeout(() => { sound.dataset.playing = ""; }, 5000);
+          }
+        }
+
+        // Update timestamp and remember it
+        const maxTs = data.reduce((m, item) => Math.max(m, item.ts || 0), lastTs);
+        lastTs = Math.max(lastTs, maxTs);
+        localStorage.setItem("lastTs", lastTs);
+
+        // Reset dismissal because truly new data arrived
+        alertDismissed = false;
+        localStorage.setItem("alertDismissed", "false");
       }
-
-      const maxTs = data.reduce((m, item) => Math.max(m, item.ts || 0), lastTs);
-      lastTs = Math.max(lastTs, maxTs);
+    } catch (err) {
+      console.error('poll error', err);
     }
-  } catch (err) {
-    console.error('poll error', err);
   }
-}
 
-function dismissAlert() {
-  document.getElementById('newAlert').style.display = 'none';
-  alertDismissed = true; // 👈 Prevent future popups
-}
+  // Dismiss button handler
+  function dismissAlert() {
+    document.getElementById('newAlert').style.display = 'none';
+    alertDismissed = true;
+    localStorage.setItem("alertDismissed", "true");
+  }
 
-setInterval(checkNewIncidents, POLL_INTERVAL);
-setTimeout(checkNewIncidents, 1000);
+  // Refresh button handler (resets alert state)
+  function resetAlert() {
+    alertDismissed = false;
+    localStorage.setItem("alertDismissed", "false");
+    location.reload();
+  }
 
-  </script>
+  // Apply initial alert state
+  if (alertDismissed) {
+    document.getElementById('newAlert').style.display = 'none';
+  }
+
+  // Start polling
+  setInterval(checkNewIncidents, POLL_INTERVAL);
+  setTimeout(checkNewIncidents, 1000);
+</script>
+
 </body>
 </html>
