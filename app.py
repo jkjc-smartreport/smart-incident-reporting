@@ -17,9 +17,10 @@ app.config['SESSION_COOKIE_SECURE'] = True    # Enable only in production with H
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 
 # ==========================
-# PERSISTENT UPLOAD FOLDER
+# PERSISTENT UPLOAD FOLDER (Render-ready)
 # ==========================
-UPLOAD_FOLDER = "/data/uploads"  # Railway persistent volume
+# Use a folder inside your app root so Flask can write files
+UPLOAD_FOLDER = os.path.join(os.getcwd(), "uploads")
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 
