@@ -1,5 +1,5 @@
 from flask import Flask, render_template, request, redirect, session, url_for, flash, jsonify, send_from_directory
-from config import get_db_connection  # type: ignore
+from config import get_db_connection # type: ignore
 from collections import defaultdict
 from datetime import datetime
 import mysql.connector
@@ -9,17 +9,18 @@ from werkzeug.security import generate_password_hash, check_password_hash
 import re
 
 app = Flask(__name__)
-app.secret_key = "replace_this_with_a_random_secret_key"  # needed for sessions
+app.secret_key = "replace_this_with_a_random_secret_key"
 
-# 🔒 Security configurations
+# ==========================
+# SECURITY + CONFIG
+# ==========================
 app.config['SESSION_COOKIE_HTTPONLY'] = True
-app.config['SESSION_COOKIE_SECURE'] = True    # Enable only in production with HTTPS
+app.config['SESSION_COOKIE_SECURE'] = True  # enable only in production with HTTPS
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 
 # ==========================
-# PERSISTENT UPLOAD FOLDER (Render-ready)
+# UPLOAD SETTINGS
 # ==========================
-# Use a folder inside your app root so Flask can write files
 UPLOAD_FOLDER = os.path.join(os.getcwd(), "uploads")
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
@@ -27,9 +28,10 @@ app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 ALLOWED_IMAGE_EXTENSIONS = {"png", "jpg", "jpeg", "gif"}
 ALLOWED_VIDEO_EXTENSIONS = {"mp4", "avi", "mov", "mkv"}
 
-# Helper function to check valid file extensions
+
 def allowed_file(filename, allowed_set):
     return "." in filename and filename.rsplit(".", 1)[1].lower() in allowed_set
+
 
 # ==========================
 # Serve uploaded files
@@ -38,14 +40,16 @@ def allowed_file(filename, allowed_set):
 def uploaded_file(filename):
     return send_from_directory(app.config["UPLOAD_FOLDER"], filename)
 
+
 # ==========================
-# Routes
+# INDEX / LOGIN / REGISTER
 # ==========================
 @app.route("/")
 def index():
     if "user_id" in session:
         return redirect(url_for("dashboard"))
     return redirect(url_for("login"))
+
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
@@ -66,10 +70,9 @@ def login():
             session["role"] = user["role"]
             return redirect(url_for("dashboard"))
         else:
-            flash("⚠️ Invalid email or password. Please try again.", "error")
-            return render_template("login.html")
-
+            flash("⚠️ Invalid email or password.", "error")
     return render_template("login.html")
+
 
 @app.route("/agency-login", methods=["GET", "POST"])
 def agency_login():
@@ -91,11 +94,12 @@ def agency_login():
                 session["role"] = user["role"]
                 return redirect(url_for("dashboard"))
             else:
-                flash("⚠️ Incorrect password. Please try again.", "error")
+                flash("⚠️ Incorrect password.", "error")
         else:
-            flash("🚫 Invalid agency credentials or not authorized.", "error")
+            flash("🚫 Invalid agency credentials.", "error")
 
     return render_template("agency_login.html")
+
 
 @app.route("/register", methods=["GET", "POST"])
 def register():
@@ -107,36 +111,34 @@ def register():
         contact_no = request.form["contact_no"].strip()
         role = "Public"
 
-        if not name or not email or not password or not contact_no:
-            flash("⚠️ All fields are required.", "error")
+        # validations...
+        if not all([name, email, password, contact_no]):
+            flash("⚠️ All fields required.", "error")
             return redirect(url_for("register"))
 
         if not re.match(r"[^@]+@[^@]+\.[^@]+", email):
-            flash("⚠️ Invalid email format.", "error")
+            flash("⚠️ Invalid email.", "error")
             return redirect(url_for("register"))
 
         if password != confirm_password:
             flash("⚠️ Passwords do not match.", "error")
             return redirect(url_for("register"))
 
-        if len(password) < 8 or not re.search(r"[A-Z]", password) \
-           or not re.search(r"[a-z]", password) or not re.search(r"[0-9]", password) \
-           or not re.search(r"[@$!%*?&]", password):
-            flash("⚠️ Password must have 8+ characters, uppercase, lowercase, number, and special symbol.", "error")
+        if len(password) < 8 or not re.search(r"[A-Z]", password):
+            flash("⚠️ Weak password.", "error")
             return redirect(url_for("register"))
 
         if not re.match(r"^09\d{9}$", contact_no):
-            flash("⚠️ Invalid contact number. Use 09XXXXXXXXX format.", "error")
+            flash("⚠️ Invalid contact number.", "error")
             return redirect(url_for("register"))
 
         conn = get_db_connection()
         cur = conn.cursor(dictionary=True)
         cur.execute("SELECT * FROM users WHERE email=%s", (email,))
         existing = cur.fetchone()
+
         if existing:
-            flash("⚠️ This email is already registered. Please log in instead.", "error")
-            cur.close()
-            conn.close()
+            flash("⚠️ Email already registered.", "error")
             return redirect(url_for("login"))
 
         hashed_pw = generate_password_hash(password)
@@ -148,10 +150,11 @@ def register():
         cur.close()
         conn.close()
 
-        flash("✅ Registration successful! You can now log in.", "success")
+        flash("✅ Registration successful!", "success")
         return redirect(url_for("login"))
 
     return render_template("register.html")
+
 
 # ==========================
 # REPORT INCIDENT
@@ -159,7 +162,7 @@ def register():
 @app.route("/report", methods=["GET", "POST"])
 def report():
     if "user_id" not in session or session["role"] != "Public":
-        flash("You must be logged in as a public user to report an incident.")
+        flash("You must be logged in as a public user.")
         return redirect(url_for("login"))
 
     if request.method == "POST":
@@ -168,47 +171,68 @@ def report():
         location = request.form["location"]
         gps_lat = request.form.get("gps_lat") or None
         gps_long = request.form.get("gps_long") or None
-        selected_agencies = request.form.getlist("agencies")
-        agencies_text = ",".join(selected_agencies) if selected_agencies else None
+        agencies = request.form.getlist("agencies")
+        agencies_text = ",".join(agencies) if agencies else None
 
-        # Handle image upload
+        # ✅ Upload handling
         image_file = request.files.get("incident_image")
+        video_file = request.files.get("incident_video")
         image_filename = None
+        video_filename = None
+
         if image_file and allowed_file(image_file.filename, ALLOWED_IMAGE_EXTENSIONS):
             filename = secure_filename(image_file.filename)
             image_file.save(os.path.join(app.config["UPLOAD_FOLDER"], filename))
-            image_filename = filename  # <- save only filename in DB
+            image_filename = filename
 
-        # Handle video upload
-        video_file = request.files.get("incident_video")
-        video_filename = None
         if video_file and allowed_file(video_file.filename, ALLOWED_VIDEO_EXTENSIONS):
             filename = secure_filename(video_file.filename)
             video_file.save(os.path.join(app.config["UPLOAD_FOLDER"], filename))
-            video_filename = filename  # <- save only filename in DB
+            video_filename = filename
 
-        # Insert incident into database
         conn = get_db_connection()
         cur = conn.cursor()
         cur.execute("""
-            INSERT INTO incidents 
-            (reported_by_user_id, incident_type, description, location, gps_lat, gps_long, status, date_reported, agencies_notified, image_path, video_path)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            INSERT INTO incidents (reported_by_user_id, incident_type, description, location,
+                                   gps_lat, gps_long, status, date_reported, agencies_notified, image_path, video_path)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
         """, (
-            session["user_id"], incident_type, description, location, gps_lat, gps_long,
-            "Pending", datetime.now(), agencies_text, image_filename, video_filename
+            session["user_id"], incident_type, description, location,
+            gps_lat, gps_long, "Pending", datetime.now(),
+            agencies_text, image_filename, video_filename
         ))
+        incident_id = cur.lastrowid
+
+        # ✅ record to incident_history
+        cur.execute("""
+            INSERT INTO incident_history (incident_id, updated_by, status_update, notes)
+            VALUES (%s, %s, %s, %s)
+        """, (incident_id, session["user_id"], "Pending", "Initial report submitted"))
+
+        # ✅ store media info
+        if image_filename:
+            cur.execute("""
+                INSERT INTO media (incident_id, file_path, file_type)
+                VALUES (%s, %s, 'image')
+            """, (incident_id, image_filename))
+        if video_filename:
+            cur.execute("""
+                INSERT INTO media (incident_id, file_path, file_type)
+                VALUES (%s, %s, 'video')
+            """, (incident_id, video_filename))
+
         conn.commit()
         cur.close()
         conn.close()
 
-        flash(f"Incident reported successfully to: {agencies_text if agencies_text else 'No agency selected.'}")
+        flash("✅ Incident reported successfully!", "success")
         return redirect(url_for("dashboard"))
 
     return render_template("report.html")
 
+
 # ==========================
-# INCIDENT LIST
+# INCIDENTS LIST
 # ==========================
 @app.route("/incidents")
 def incidents():
@@ -224,10 +248,7 @@ def incidents():
 
     if role == "Public":
         query = """
-            SELECT i.incident_id, i.incident_type, i.description, i.location,
-                   i.gps_lat, i.gps_long, i.status, i.date_reported,
-                   i.agencies_notified, i.image_path, i.video_path,
-                   u.name AS reported_by
+            SELECT i.*, u.name AS reported_by
             FROM incidents i
             JOIN users u ON i.reported_by_user_id = u.user_id
             WHERE i.reported_by_user_id = %s
@@ -238,10 +259,7 @@ def incidents():
             params.append(filter_status)
     else:
         query = """
-            SELECT i.incident_id, i.incident_type, i.description, i.location,
-                   i.gps_lat, i.gps_long, i.status, i.date_reported,
-                   i.agencies_notified, i.image_path, i.video_path,
-                   u.name AS reported_by
+            SELECT i.*, u.name AS reported_by
             FROM incidents i
             JOIN users u ON i.reported_by_user_id = u.user_id
         """
@@ -250,35 +268,65 @@ def incidents():
             query += " WHERE i.agencies_notified LIKE %s"
             params.append(f"%{role}%")
         if filter_status:
-            if role == "Admin":
-                query += " WHERE"
-            else:
-                query += " AND"
-            query += " i.status = %s"
+            query += " AND i.status = %s" if params else " WHERE i.status = %s"
             params.append(filter_status)
 
     query += " ORDER BY i.date_reported DESC"
-
     cur.execute(query, tuple(params))
-    all_incidents = cur.fetchall()
+    incidents = cur.fetchall()
     cur.close()
     conn.close()
 
-    # Group by month
     grouped = defaultdict(list)
-    for inc in all_incidents:
-        if isinstance(inc["date_reported"], datetime):
-            month_label = inc["date_reported"].strftime("%B %Y")
-        else:
-            try:
-                month_label = datetime.strptime(str(inc["date_reported"]), "%Y-%m-%d %H:%M:%S").strftime("%B %Y")
-            except:
-                month_label = "Unknown Date"
-        grouped[month_label].append(inc)
-
+    for inc in incidents:
+        try:
+            date = datetime.strptime(str(inc["date_reported"]), "%Y-%m-%d %H:%M:%S")
+            label = date.strftime("%B %Y")
+        except:
+            label = "Unknown Date"
+        grouped[label].append(inc)
     grouped_sorted = dict(sorted(grouped.items(), reverse=True))
 
     return render_template("incidents.html", incidents_by_month=grouped_sorted, role=role)
+
+
+# ==========================
+# UPDATE STATUS (AGENCY)
+# ==========================
+@app.route("/update_status/<int:incident_id>", methods=["POST"])
+def update_status(incident_id):
+    if "user_id" not in session or session["role"] not in ("BFP", "PNP", "CDRRMO"):
+        return "Access denied", 403
+
+    new_status = request.form.get("status")
+    if new_status not in ("Pending", "Verified", "Resolved"):
+        return "Invalid status", 400
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    # update incident status
+    cur.execute("UPDATE incidents SET status=%s WHERE incident_id=%s", (new_status, incident_id))
+
+    # record in history
+    cur.execute("""
+        INSERT INTO incident_history (incident_id, updated_by, status_update, notes)
+        VALUES (%s, %s, %s, %s)
+    """, (incident_id, session["user_id"], new_status, f"Status changed to {new_status}"))
+
+    # create alert
+    cur.execute("""
+        INSERT INTO alerts (incident_id, recipient_id, message, status)
+        VALUES (%s, %s, %s, 'Pending')
+    """, (incident_id, session["user_id"], f"Incident #{incident_id} updated to {new_status}"))
+
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    flash(f"Incident #{incident_id} updated to {new_status}.", "success")
+    return redirect(url_for("incidents"))
+
 
 # ==========================
 # DASHBOARD
@@ -289,115 +337,6 @@ def dashboard():
         return redirect(url_for("login"))
     return render_template("dashboard.html", name=session["name"], role=session["role"])
 
-# ==========================
-# UPDATE INCIDENT STATUS
-# ==========================
-@app.route("/update_status/<int:incident_id>", methods=["POST"])
-def update_status(incident_id):
-    if "user_id" not in session:
-        return redirect(url_for("login"))
-    if session["role"] not in ("BFP", "PNP", "CDRRMO"):
-        return "Access denied", 403
-
-    new_status = request.form.get("status")
-    if new_status not in ("Pending", "Verified", "Resolved"):
-        return "Invalid status", 400
-
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute("UPDATE incidents SET status=%s WHERE incident_id=%s", (new_status, incident_id))
-    conn.commit()
-    cur.close()
-    conn.close()
-
-    flash(f"Incident {incident_id} status updated to {new_status}.")
-    return redirect(url_for("incidents"))
-
-# ==========================
-# API: NEW INCIDENTS
-# ==========================
-@app.route("/api/new_incidents")
-def api_new_incidents():
-    if "user_id" not in session:
-        return jsonify({"error": "login required"}), 401
-
-    role = session.get("role")
-    since_param = request.args.get("since", "0")
-    try:
-        since = float(since_param)
-    except ValueError:
-        since = 0.0
-
-    conn = get_db_connection()
-    cur = conn.cursor(dictionary=True)
-
-    if role == "Admin":
-        cur.execute("""
-            SELECT i.incident_id, i.incident_type, i.description, i.location,
-                   i.gps_lat, i.gps_long, i.status, UNIX_TIMESTAMP(i.date_reported) AS ts,
-                   i.agencies_notified, u.name AS reported_by
-            FROM incidents i
-            JOIN users u ON i.reported_by_user_id = u.user_id
-            WHERE UNIX_TIMESTAMP(i.date_reported) > %s
-            ORDER BY i.date_reported ASC
-        """, (since,))
-    else:
-        cur.execute("""
-            SELECT i.incident_id, i.incident_type, i.description, i.location,
-                   i.gps_lat, i.gps_long, i.status, UNIX_TIMESTAMP(i.date_reported) AS ts,
-                   i.agencies_notified, u.name AS reported_by
-            FROM incidents i
-            JOIN users u ON i.reported_by_user_id = u.user_id
-            WHERE UNIX_TIMESTAMP(i.date_reported) > %s
-              AND i.agencies_notified LIKE %s
-            ORDER BY i.date_reported ASC
-        """, (since, f"%{role}%"))
-
-    rows = cur.fetchall()
-    cur.close()
-    conn.close()
-
-    result = []
-    for r in rows:
-        result.append({
-            "incident_id": r["incident_id"],
-            "incident_type": r["incident_type"],
-            "description": r["description"],
-            "location": r["location"],
-            "gps_lat": r["gps_lat"],
-            "gps_long": r["gps_long"],
-            "status": r["status"],
-            "ts": r["ts"],
-            "agencies_notified": r.get("agencies_notified"),
-            "reported_by": r.get("reported_by")
-        })
-
-    return jsonify(result)
-
-# ==========================
-# INCIDENT DETAIL
-# ==========================
-@app.route("/incident/<int:incident_id>")
-def incident_detail(incident_id):
-    if "user_id" not in session:
-        return redirect(url_for("login"))
-
-    conn = get_db_connection()
-    cur = conn.cursor(dictionary=True)
-    cur.execute("""
-        SELECT i.*, u.name AS reported_by, u.contact_no
-        FROM incidents i
-        JOIN users u ON i.reported_by_user_id = u.user_id
-        WHERE i.incident_id = %s
-    """, (incident_id,))
-    incident = cur.fetchone()
-    cur.close()
-    conn.close()
-
-    if not incident:
-        return "Incident not found", 404
-
-    return render_template("incident_detail.html", incident=incident)
 
 # ==========================
 # LOGOUT
@@ -408,8 +347,8 @@ def logout():
     session.clear()
     if role in ("BFP", "PNP", "CDRRMO"):
         return redirect(url_for("agency_login"))
-    else:
-        return redirect(url_for("login"))
+    return redirect(url_for("login"))
+
 
 # ==========================
 # RUN APP
