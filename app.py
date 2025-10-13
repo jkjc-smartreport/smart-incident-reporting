@@ -364,11 +364,7 @@ def api_new_incidents():
         return jsonify({"error": "login required"}), 401
 
     role = session.get("role")
-    since_param = request.args.get("since", "0")
-    try:
-        since = float(since_param)
-    except ValueError:
-        since = 0.0
+    since = float(request.args.get("since", 0))
 
     conn = get_db_connection()
     cur = conn.cursor(dictionary=True)
@@ -399,22 +395,12 @@ def api_new_incidents():
     cur.close()
     conn.close()
 
-    result = []
-    for r in rows:
-        result.append({
-            "incident_id": r["incident_id"],
-            "incident_type": r["incident_type"],
-            "description": r["description"],
-            "location": r["location"],
-            "gps_lat": r["gps_lat"],
-            "gps_long": r["gps_long"],
-            "status": r["status"],
-            "ts": r["ts"],
-            "agencies_notified": r.get("agencies_notified"),
-            "reported_by": r.get("reported_by")
-        })
+    if rows:
+        # ✅ Save the most recent timestamp seen
+        latest_ts = max(row["ts"] for row in rows)
+        session["last_seen_incident_ts"] = latest_ts
 
-    return jsonify(result)
+    return jsonify(rows)
 
 # ==========================
 # INCIDENT DETAIL
@@ -452,6 +438,11 @@ def logout():
         return redirect(url_for("agency_login"))
     else:
         return redirect(url_for("login"))
+    
+@app.route("/api/dismiss_alerts", methods=["POST"])
+def dismiss_alerts():
+    session["last_seen_incident_ts"] = datetime.now().timestamp()
+    return jsonify({"status": "ok"})
 
 # ==========================
 # RUN APP

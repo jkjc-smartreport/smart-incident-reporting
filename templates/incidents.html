@@ -202,11 +202,11 @@
     <audio id="alertSound" src="{{ url_for('static', filename='sounds/alert.mp3') }}" preload="auto"></audio>
 
     <div id="newAlert">
-      🚨 <strong id="newCount">0</strong> new incident(s) — 
-      <span id="newDetails"></span>
-      <button onclick="location.reload()">Refresh</button>
-      <button onclick="document.getElementById('newAlert').style.display='none'">Dismiss</button>
-    </div>
+  🚨 <strong id="newCount">0</strong> new incident(s) — 
+  <span id="newDetails"></span>
+  <button onclick="location.reload()">Refresh</button>
+  <button onclick="dismissAlert()">Dismiss</button>  <!-- ✅ Changed -->
+</div>
 
     <!-- Filter by Status -->
     <form method="get" action="/incidents">
@@ -297,35 +297,44 @@
 
   <script>
     let lastTs = Math.floor(Date.now() / 1000);
-    const POLL_INTERVAL = 8000;
+const POLL_INTERVAL = 8000;
+let alertDismissed = false; // 👈 Added this flag
 
-    async function checkNewIncidents() {
-      try {
-        const resp = await fetch(`/api/new_incidents?since=${lastTs}`, { credentials: 'same-origin' });
-        if (!resp.ok) return;
-        const data = await resp.json();
-        if (Array.isArray(data) && data.length > 0) {
-          document.getElementById('newCount').textContent = data.length;
-          document.getElementById('newAlert').style.display = 'block';
-          const details = data.map(i => `${i.incident_type} @ ${i.location}`).join(" | ");
-          document.getElementById('newDetails').textContent = details;
+async function checkNewIncidents() {
+  if (alertDismissed) return; // 👈 Don't check again if dismissed
 
-          const sound = document.getElementById('alertSound');
-          if (sound) {
-            sound.currentTime = 0;
-            sound.play().catch(err => console.log("Autoplay blocked:", err));
-          }
+  try {
+    const resp = await fetch(`/api/new_incidents?since=${lastTs}`, { credentials: 'same-origin' });
+    if (!resp.ok) return;
+    const data = await resp.json();
+    if (Array.isArray(data) && data.length > 0) {
+      document.getElementById('newCount').textContent = data.length;
+      document.getElementById('newAlert').style.display = 'block';
+      const details = data.map(i => `${i.incident_type} @ ${i.location}`).join(" | ");
+      document.getElementById('newDetails').textContent = details;
 
-          const maxTs = data.reduce((m, item) => Math.max(m, item.ts || 0), lastTs);
-          lastTs = Math.max(lastTs, maxTs);
-        }
-      } catch (err) {
-        console.error('poll error', err);
+      const sound = document.getElementById('alertSound');
+      if (sound) {
+        sound.currentTime = 0;
+        sound.play().catch(err => console.log("Autoplay blocked:", err));
       }
-    }
 
-    setInterval(checkNewIncidents, POLL_INTERVAL);
-    setTimeout(checkNewIncidents, 1000);
+      const maxTs = data.reduce((m, item) => Math.max(m, item.ts || 0), lastTs);
+      lastTs = Math.max(lastTs, maxTs);
+    }
+  } catch (err) {
+    console.error('poll error', err);
+  }
+}
+
+function dismissAlert() {
+  document.getElementById('newAlert').style.display = 'none';
+  alertDismissed = true; // 👈 Prevent future popups
+}
+
+setInterval(checkNewIncidents, POLL_INTERVAL);
+setTimeout(checkNewIncidents, 1000);
+
   </script>
 </body>
 </html>
