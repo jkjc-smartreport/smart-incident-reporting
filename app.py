@@ -427,6 +427,39 @@ def incident_detail(incident_id):
 
     return render_template("incident_detail.html", incident=incident)
 
+@app.route("/delete_incident/<int:incident_id>", methods=["POST"])
+def delete_incident(incident_id):
+    if "user_id" not in session or session["role"] != "Public":
+        return "Access denied", 403
+
+    user_id = session["user_id"]
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    # Delete media files
+    cur.execute("DELETE FROM media WHERE incident_id=%s", (incident_id,))
+
+    # Delete history
+    cur.execute("DELETE FROM incident_history WHERE incident_id=%s", (incident_id,))
+
+    # Delete alerts
+    cur.execute("DELETE FROM alerts WHERE incident_id=%s", (incident_id,))
+
+    # Delete the main incident (only if belongs to this public user AND still pending)
+    cur.execute("""
+        DELETE FROM incidents 
+        WHERE incident_id=%s AND reported_by_user_id=%s AND status='Pending'
+    """, (incident_id, user_id))
+
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    flash("✅ Incident deleted successfully.", "success")
+    return redirect(url_for("incidents"))
+
+
 # ==========================
 # LOGOUT
 # ==========================
